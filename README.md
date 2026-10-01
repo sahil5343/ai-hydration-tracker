@@ -47,4 +47,10 @@ Open the Streamlit URL printed by the second command (usually `http://localhost:
 - `GET /insights?day=YYYY-MM-DD&target_ml=2000` — backward-compatible alias for `/ai-insight`
 - `GET /health` — basic health check
 
-The agent tools include `get_water_history(days)` and `calculate_streak()`. The Streamlit panel shows tool calls and their results, not hidden model reasoning. The SQLite database is created automatically at first startup. Intake is stored with the requested `id`, `date`, `amount_ml`, and `notes` fields.
+The agent tools include `get_water_history(days)` and `calculate_streak()`. The Streamlit panel shows tool calls and their results, not hidden model reasoning. Additional features:
+
+- Weather lookup via Open-Meteo (no API key required): enter a city in the sidebar. At 30 °C or above, the dashboard applies a modest 500 ml target adjustment for that location and base target. This is general encouragement, not a medical prescription.
+- Natural-language logging: use the quick-log sentence field. LangChain and the configured OpenAI model extract an amount and short context; this requires `OPENAI_API_KEY`.
+- Weekly report: use **Download weekly PDF** to export the last seven days of totals, entry counts, and daily average.
+
+Related API endpoints are `GET /weather-target?location=Seattle&base_target_ml=2000`, `POST /intake/natural` with a `phrase` and optional `date`, and `GET /weekly-report.pdf`. The SQLite database is created automatically at first startup. Intake is stored with the `id`, `date`, `amount_ml`, and `notes` fields.

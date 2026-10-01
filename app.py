@@ -68,10 +68,45 @@ st.markdown(
 )
 
 today = date.today()
-target_ml = st.sidebar.number_input(
-    "Daily target (ml)", min_value=500, max_value=10_000, value=2_000, step=250
+base_target_ml = st.sidebar.number_input(
+    "Daily target (ml)", min_value=500, max_value=10_000, value=2_000, step=250,
+    key="base_target_ml",
 )
 history_days = st.sidebar.selectbox("History range", [7, 14, 30, 90], index=2)
+
+with st.sidebar.expander("Weather-aware target", expanded=False):
+    weather_location = st.text_input("City or location", placeholder="e.g. Seattle")
+    if st.button("Check weather and adjust target", use_container_width=True):
+        if not weather_location.strip():
+            st.warning("Enter a city or location first.")
+        else:
+            try:
+                weather = api_get(
+                    "/weather-target",
+                    location=weather_location.strip(),
+                    base_target_ml=int(target_ml),
+                )
+                st.session_state["weather_target_ml"] = weather["adjusted_target_ml"]
+                st.session_state["weather_summary"] = weather
+                st.session_state["weather_lookup_key"] = (
+                    weather_location.strip().casefold(), int(base_target_ml)
+                )
+            except requests.RequestException as exc:
+                show_api_error(exc)
+    weather_summary = st.session_state.get("weather_summary")
+    if weather_summary:
+        st.caption(
+            f"{weather_summary['location']}: {weather_summary['temperature_c']:.1f} °C"
+        )
+        st.info(weather_summary["message"])
+        if weather_summary["adjustment_ml"]:
+            st.success(f"Suggested target: {weather_summary['adjusted_target_ml']:,} ml")
+
+weather_lookup_key = st.session_state.get("weather_lookup_key")
+target_ml = int(base_target_ml)
+if weather_lookup_key == (weather_location.strip().casefold(), int(base_target_ml)):
+    target_ml = int(st.session_state["weather_target_ml"])
+    st.sidebar.caption(f"Weather-adjusted target applied: {target_ml:,} ml")
 
 try:
     today_entries = api_get("/history", days=1)
@@ -90,6 +125,28 @@ left, right = st.columns([0.9, 1.1], gap="large")
 
 with left:
     st.subheader("Log a drink")
+    with st.expander("Quick log with a sentence", expanded=False):
+        natural_phrase = st.text_input(
+            "What did you drink?",
+            placeholder="I drank 500 ml of water after a run",
+            key="natural_intake_phrase",
+        )
+        if st.button("Parse and log", key="natural_intake_submit", type="primary"):
+            if not natural_phrase.strip():
+                st.warning("Describe a water drink first.")
+            else:
+                try:
+                    entry = api_post(
+                        "/intake/natural",
+                        {"phrase": natural_phrase.strip(), "date": today.isoformat()},
+                    )
+                    st.success(
+                        f"Logged {entry['amount_ml']:,} ml"
+                        + (f" — {entry['notes']}" if entry.get("notes") else "")
+                    )
+                    st.rerun()
+                except requests.RequestException as exc:
+                    show_api_error(exc)
     with st.form("intake_form", clear_on_submit=True):
         amount_ml = st.number_input(
             "Amount (ml)", min_value=1, max_value=10_000, value=250, step=50
@@ -132,6 +189,24 @@ with right:
             st.info("Your log is empty for this range. Add your first drink to get started.")
     except requests.RequestException as exc:
         show_api_error(exc)
+
+st.divider()
+st.subheader("Weekly report")
+st.caption("Download a PDF summary of daily totals and your seven-day average.")
+try:
+    report_response = requests.get(
+        f"{API_BASE_URL}/weekly-report.pdf", timeout=REQUEST_TIMEOUT_SECONDS
+    )
+    report_response.raise_for_status()
+    st.download_button(
+        "Download weekly PDF",
+        data=report_response.content,
+        file_name="weekly-water-summary.pdf",
+        mime="application/pdf",
+        type="secondary",
+    )
+except requests.RequestException as exc:
+    show_api_error(exc)
 
 st.divider()
 st.subheader("Agentic hydration coach")
